@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #6C5CE7;
+  --primary-hover: #5b4cdb;
+  --secondary: #00B894;
+  --secondary-hover: #00a383;
+  --accent: #FD79A8;
+  --warning: #FDCB6E;
+  --danger: #E17055;
+  --info: #0984E3;
+  --dark-navy: #1E272E;
+  --sidebar-bg: #1e293b;
+  --sidebar-text: #cbd5e1;
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+}
+
+.dark {
+  --sidebar-bg: #0f172a;
+}
+
+body {
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Glassmorphism card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.glass-card-dark {
+  background: rgba(30, 41, 59, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Gradient buttons & cards */
+.gradient-primary {
+  background: linear-gradient(135deg, #6C5CE7 0%, #a29bfe 100%);
+}
+
+.gradient-secondary {
+  background: linear-gradient(135deg, #00B894 0%, #55efc4 100%);
+}
+
+.gradient-accent {
+  background: linear-gradient(135deg, #FD79A8 0%, #fab1a0 100%);
+}
+
+.gradient-warning {
+  background: linear-gradient(135deg, #FDCB6E 0%, #ffeaa7 100%);
+}
+
+.gradient-danger {
+  background: linear-gradient(135deg, #E17055 0%, #ff7675 100%);
+}
+
+.gradient-info {
+  background: linear-gradient(135deg, #0984E3 0%, #74b9ff 100%);
+}
+
+.gradient-hero {
+  background: linear-gradient(135deg, rgba(108, 92, 231, 0.85) 0%, rgba(253, 121, 168, 0.8) 50%, rgba(225, 112, 85, 0.75) 100%);
+}
+
+/* Card hover lift */
+.hover-lift {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Print styles for invoice */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-invoice, #printable-invoice * {
+    visibility: visible;
+  }
+  #printable-invoice {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px;
+    background: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

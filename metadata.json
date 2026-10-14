@@ -1,0 +1,6 @@
+{
+  "name": "Grand Horizon - Java OOP Hotel Management System",
+  "description": "Full-stack Hotel Management System demonstrating Core & Advanced Java OOP concepts, Spring Boot 3 REST APIs, MySQL schema, interactive dashboard, and lab manual deliverables.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
