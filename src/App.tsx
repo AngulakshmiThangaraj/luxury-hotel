@@ -3,6 +3,24 @@ import { Customer, Invoice, Room, User, Booking } from './types';
 import { INITIAL_BOOKINGS, INITIAL_CUSTOMERS, INITIAL_ROOMS, INITIAL_SERVICES } from './mockData';
 import { calculateBill, calculateRoomTariff } from './services/hotelLogic';
 
+// Firebase Services & Auth
+import { auth } from './firebase/config';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import {
+  seedInitialFirestoreData,
+  subscribeRooms,
+  subscribeCustomers,
+  subscribeBookings,
+  subscribeServices,
+  saveRoom,
+  deleteRoom,
+  saveCustomer,
+  deleteCustomer,
+  saveBooking,
+  saveInvoice,
+  saveUserProfile,
+} from './firebase/firestoreService';
+
 // Subcomponents
 import { LoginView } from './components/LoginView';
 import { Sidebar, TabType } from './components/Sidebar';
@@ -36,12 +54,13 @@ export default function App() {
 
   const [currentTab, setCurrentTab] = useState<TabType>('dashboard');
   const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [isDbConnected, setIsDbConnected] = useState<boolean>(false);
 
   // Entities state
   const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
   const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
   const [bookings, setBookings] = useState<Booking[]>(INITIAL_BOOKINGS);
-  const [services] = useState(INITIAL_SERVICES);
+  const [services, setServices] = useState(INITIAL_SERVICES);
 
   // Preselected context states
   const [preselectedRoom, setPreselectedRoom] = useState<Room | null>(null);
@@ -71,12 +90,86 @@ export default function App() {
     }
   }, [darkMode]);
 
+  // Firestore Real-Time Subscriptions & Seeding
+  useEffect(() => {
+    let unsubRooms: (() => void) | undefined;
+    let unsubCustomers: (() => void) | undefined;
+    let unsubBookings: (() => void) | undefined;
+    let unsubServices: (() => void) | undefined;
+
+    const initFirestore = async () => {
+      try {
+        await seedInitialFirestoreData();
+        setIsDbConnected(true);
+
+        unsubRooms = subscribeRooms((remoteRooms) => {
+          if (remoteRooms && remoteRooms.length > 0) {
+            setRooms(remoteRooms);
+          }
+        });
+
+        unsubCustomers = subscribeCustomers((remoteCustomers) => {
+          if (remoteCustomers && remoteCustomers.length > 0) {
+            setCustomers(remoteCustomers);
+          }
+        });
+
+        unsubBookings = subscribeBookings((remoteBookings) => {
+          if (remoteBookings && remoteBookings.length > 0) {
+            setBookings(remoteBookings);
+          }
+        });
+
+        unsubServices = subscribeServices((remoteServices) => {
+          if (remoteServices && remoteServices.length > 0) {
+            setServices(remoteServices);
+          }
+        });
+      } catch (err) {
+        console.warn('Firestore initial sync notice:', err);
+      }
+    };
+
+    initFirestore();
+
+    // Firebase Auth State Listener
+    const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        const email = fbUser.email || '';
+        const role = email.toLowerCase() === 'chitraangulakshmi@gmail.com' ? 'ADMIN' : 'RECEPTIONIST';
+        const userObj: User = {
+          id: Date.now(),
+          uid: fbUser.uid,
+          username: email.split('@')[0] || 'google_user',
+          fullName: fbUser.displayName || 'Authorized Staff',
+          email,
+          role,
+          authProvider: 'google',
+          avatarUrl: fbUser.photoURL || undefined,
+        };
+        setCurrentUser(userObj);
+        try {
+          localStorage.setItem('gh_hotel_user', JSON.stringify(userObj));
+        } catch {}
+      }
+    });
+
+    return () => {
+      unsubRooms?.();
+      unsubCustomers?.();
+      unsubBookings?.();
+      unsubServices?.();
+      unsubAuth();
+    };
+  }, []);
+
   // Auth Handlers
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     try {
       localStorage.setItem('gh_hotel_user', JSON.stringify(user));
     } catch {}
+    saveUserProfile(user).catch(() => {});
     if (user.authProvider === 'google') {
       addToast(`Signed in with Google as ${user.fullName} (${user.role})!`, 'success');
     } else {
@@ -84,7 +177,10 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch {}
     setCurrentUser(null);
     try {
       localStorage.removeItem('gh_hotel_user');
@@ -98,17 +194,20 @@ export default function App() {
     const newId = Math.max(...rooms.map((r) => r.id), 0) + 1;
     const room: Room = { ...newRoomData, id: newId };
     setRooms((prev) => [...prev, room]);
+    saveRoom(room).catch((e) => console.warn('Save room error:', e));
     addToast(`Room ${room.roomNumber} (${room.roomType}) added successfully!`, 'success');
   };
 
   const handleUpdateRoom = (updatedRoom: Room) => {
     setRooms((prev) => prev.map((r) => (r.id === updatedRoom.id ? updatedRoom : r)));
+    saveRoom(updatedRoom).catch((e) => console.warn('Update room error:', e));
     addToast(`Room ${updatedRoom.roomNumber} updated successfully!`, 'success');
   };
 
   const handleDeleteRoom = (roomId: number) => {
     const room = rooms.find((r) => r.id === roomId);
     setRooms((prev) => prev.filter((r) => r.id !== roomId));
+    deleteRoom(roomId).catch((e) => console.warn('Delete room error:', e));
     addToast(`Room ${room?.roomNumber || roomId} deleted from inventory.`, 'info');
   };
 
@@ -126,11 +225,13 @@ export default function App() {
       createdAt: new Date().toISOString(),
     };
     setCustomers((prev) => [newCustomer, ...prev]);
+    saveCustomer(newCustomer).catch((e) => console.warn('Save customer error:', e));
     addToast(`Guest ${newCustomer.name} registered successfully!`, 'success');
   };
 
   const handleUpdateCustomer = (updatedCustomer: Customer) => {
     setCustomers((prev) => prev.map((c) => (c.id === updatedCustomer.id ? updatedCustomer : c)));
+    saveCustomer(updatedCustomer).catch((e) => console.warn('Update customer error:', e));
     addToast(`Customer profile for ${updatedCustomer.name} updated.`, 'success');
   };
 
@@ -187,12 +288,15 @@ export default function App() {
     };
 
     setBookings((prev) => [newBooking, ...prev]);
+    saveBooking(newBooking).catch((e) => console.warn('Save booking error:', e));
 
     // If check-in is today, mark room as OCCUPIED
     if (isToday) {
+      const updatedRoom: Room = { ...room, status: 'OCCUPIED' };
       setRooms((prev) =>
-        prev.map((r) => (r.id === room.id ? { ...r, status: 'OCCUPIED' } : r))
+        prev.map((r) => (r.id === room.id ? updatedRoom : r))
       );
+      saveRoom(updatedRoom).catch(() => {});
       addToast(`Booking #${newBookingId} confirmed! Guest checked into Room ${room.roomNumber}.`, 'success');
     } else {
       addToast(`Booking #${newBookingId} reserved successfully for ${customer.name}!`, 'success');
@@ -203,13 +307,20 @@ export default function App() {
     const booking = bookings.find((b) => b.id === bookingId);
     if (!booking) return;
 
+    const updatedBooking: Booking = { ...booking, status: 'CHECKED_IN' };
     setBookings((prev) =>
-      prev.map((b) => (b.id === bookingId ? { ...b, status: 'CHECKED_IN' } : b))
+      prev.map((b) => (b.id === bookingId ? updatedBooking : b))
     );
+    saveBooking(updatedBooking).catch(() => {});
 
-    setRooms((prev) =>
-      prev.map((r) => (r.id === booking.roomId ? { ...r, status: 'OCCUPIED' } : r))
-    );
+    const room = rooms.find((r) => r.id === booking.roomId);
+    if (room) {
+      const updatedRoom: Room = { ...room, status: 'OCCUPIED' };
+      setRooms((prev) =>
+        prev.map((r) => (r.id === booking.roomId ? updatedRoom : r))
+      );
+      saveRoom(updatedRoom).catch(() => {});
+    }
 
     addToast(`Guest ${booking.customerName} checked in to Room ${booking.roomNumber}!`, 'success');
   };
@@ -218,14 +329,21 @@ export default function App() {
     const booking = bookings.find((b) => b.id === bookingId);
     if (!booking) return;
 
+    const updatedBooking: Booking = { ...booking, status: 'CANCELLED' };
     setBookings((prev) =>
-      prev.map((b) => (b.id === bookingId ? { ...b, status: 'CANCELLED' } : b))
+      prev.map((b) => (b.id === bookingId ? updatedBooking : b))
     );
+    saveBooking(updatedBooking).catch(() => {});
 
     // Release room if it was occupied
-    setRooms((prev) =>
-      prev.map((r) => (r.id === booking.roomId ? { ...r, status: 'AVAILABLE' } : r))
-    );
+    const room = rooms.find((r) => r.id === booking.roomId);
+    if (room) {
+      const updatedRoom: Room = { ...room, status: 'AVAILABLE' };
+      setRooms((prev) =>
+        prev.map((r) => (r.id === booking.roomId ? updatedRoom : r))
+      );
+      saveRoom(updatedRoom).catch(() => {});
+    }
 
     addToast(`Booking #${bookingId} has been cancelled. Room released.`, 'info');
   };
@@ -256,19 +374,18 @@ export default function App() {
     // Overloaded calculateBill(roomCharge, servicesTotal)
     const bill = calculateBill(booking.roomCharge, newServicesTotal);
 
+    const updatedBooking: Booking = {
+      ...booking,
+      services: updatedServices,
+      servicesTotal: newServicesTotal,
+      gstAmount: bill.gstAmount,
+      totalAmount: bill.grandTotal,
+    };
+
     setBookings((prev) =>
-      prev.map((b) =>
-        b.id === bookingId
-          ? {
-              ...b,
-              services: updatedServices,
-              servicesTotal: newServicesTotal,
-              gstAmount: bill.gstAmount,
-              totalAmount: bill.grandTotal,
-            }
-          : b
-      )
+      prev.map((b) => (b.id === bookingId ? updatedBooking : b))
     );
+    saveBooking(updatedBooking).catch(() => {});
 
     addToast(`Added ${quantity}x ${service.serviceName} to Room ${booking.roomNumber}'s tab!`, 'success');
   };
@@ -288,18 +405,25 @@ export default function App() {
     const todayStr = '2026-10-14';
 
     // Mark booking as checked out
+    const updatedBooking: Booking = {
+      ...booking,
+      status: 'CHECKED_OUT',
+      actualCheckoutDate: todayStr,
+    };
+
     setBookings((prev) =>
-      prev.map((b) =>
-        b.id === bookingId
-          ? { ...b, status: 'CHECKED_OUT', actualCheckoutDate: todayStr }
-          : b
-      )
+      prev.map((b) => (b.id === bookingId ? updatedBooking : b))
     );
+    saveBooking(updatedBooking).catch(() => {});
 
     // Release room back to AVAILABLE
-    setRooms((prev) =>
-      prev.map((r) => (r.id === booking.roomId ? { ...r, status: 'AVAILABLE' } : r))
-    );
+    if (room) {
+      const updatedRoom: Room = { ...room, status: 'AVAILABLE' };
+      setRooms((prev) =>
+        prev.map((r) => (r.id === booking.roomId ? updatedRoom : r))
+      );
+      saveRoom(updatedRoom).catch(() => {});
+    }
 
     const subtotal = booking.roomCharge + booking.servicesTotal;
     const bill = calculateBill(booking.roomCharge, booking.servicesTotal);
@@ -331,6 +455,7 @@ export default function App() {
       services: booking.services,
     };
 
+    saveInvoice(invoice).catch(() => {});
     setActiveInvoice(invoice);
     addToast(`Checkout completed! Tax invoice generated for ${invoice.customerName}.`, 'success');
   };
@@ -381,6 +506,7 @@ export default function App() {
           currentUser={currentUser}
           currentTab={currentTab}
           darkMode={darkMode}
+          isDbConnected={isDbConnected}
           onToggleDarkMode={() => setDarkMode(!darkMode)}
           onNewBookingClick={() => {
             setPreselectedRoom(null);

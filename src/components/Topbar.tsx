@@ -6,6 +6,7 @@ interface TopbarProps {
   currentUser: User;
   currentTab: TabType;
   darkMode: boolean;
+  isDbConnected?: boolean;
   onToggleDarkMode: () => void;
   onNewBookingClick: () => void;
   onOpenAIConcierge?: () => void;
@@ -16,6 +17,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   currentUser,
   currentTab,
   darkMode,
+  isDbConnected = true,
   onToggleDarkMode,
   onNewBookingClick,
   onOpenAIConcierge,
@@ -49,8 +51,19 @@ export const Topbar: React.FC<TopbarProps> = ({
   return (
     <header className="h-20 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-8 flex items-center justify-between transition-colors z-20">
       <div>
-        <h1 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+        <h1 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2.5">
           <span>{title}</span>
+          {isDbConnected ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Firestore Live</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              <span>Connecting DB...</span>
+            </span>
+          )}
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{sub}</p>
       </div>

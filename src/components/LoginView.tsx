@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
+import { auth, googleProvider } from '../firebase/config';
+import { signInWithPopup } from 'firebase/auth';
+import { saveUserProfile } from '../firebase/firestoreService';
 
 interface LoginViewProps {
   onLogin: (user: User) => void;
@@ -20,7 +23,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   const [customName, setCustomName] = useState('');
   const [customEmail, setCustomEmail] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -30,65 +33,115 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     }
 
     if (username === 'admin' && password === 'admin123') {
-      onLogin({
+      const user: User = {
         id: 1,
+        uid: 'admin-local-1',
         username: 'admin',
         fullName: 'Vikram Malhotra (General Manager)',
         role: 'ADMIN',
         authProvider: 'local',
-      });
+        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+      };
+      await saveUserProfile(user).catch(() => {});
+      onLogin(user);
     } else if (username === 'reception' && password === 'rec123') {
-      onLogin({
+      const user: User = {
         id: 2,
+        uid: 'rec-local-2',
         username: 'reception',
         fullName: 'Ananya Sharma (Senior Receptionist)',
         role: 'RECEPTIONIST',
         authProvider: 'local',
-      });
+        avatarUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=200&q=80',
+      };
+      await saveUserProfile(user).catch(() => {});
+      onLogin(user);
     } else {
       setError('Invalid credentials. Use demo credentials or Google Sign-In.');
     }
   };
 
-  const handleQuickLogin = (role: 'admin' | 'reception') => {
+  const handleQuickLogin = async (role: 'admin' | 'reception') => {
     if (role === 'admin') {
       setUsername('admin');
       setPassword('admin123');
-      onLogin({
+      const user: User = {
         id: 1,
+        uid: 'admin-local-1',
         username: 'admin',
         fullName: 'Vikram Malhotra (General Manager)',
         role: 'ADMIN',
         authProvider: 'local',
-      });
+        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+      };
+      await saveUserProfile(user).catch(() => {});
+      onLogin(user);
     } else {
       setUsername('reception');
       setPassword('rec123');
-      onLogin({
+      const user: User = {
         id: 2,
+        uid: 'rec-local-2',
         username: 'reception',
         fullName: 'Ananya Sharma (Senior Receptionist)',
         role: 'RECEPTIONIST',
         authProvider: 'local',
-      });
+        avatarUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=200&q=80',
+      };
+      await saveUserProfile(user).catch(() => {});
+      onLogin(user);
     }
   };
 
-  // Google Auth Handler
-  const handlePerformGoogleLogin = (account: {
+  // Real Firebase Google Auth with Popup
+  const handleDirectGoogleSignIn = async () => {
+    setError('');
+    setIsAuthenticatingWithGoogle(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const fbUser = result.user;
+      const email = fbUser.email || '';
+      const fullName = fbUser.displayName || email.split('@')[0] || 'Staff Member';
+      const role: UserRole = email.toLowerCase() === 'chitraangulakshmi@gmail.com' ? 'ADMIN' : selectedGoogleRole;
+      const userObj: User = {
+        id: Date.now(),
+        uid: fbUser.uid,
+        username: email.split('@')[0] || 'google_user',
+        fullName,
+        email,
+        role,
+        authProvider: 'google',
+        avatarUrl: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=6C5CE7&color=fff&bold=true`,
+      };
+
+      await saveUserProfile(userObj).catch((e) => console.warn('Could not sync user profile to Firestore:', e));
+      setIsAuthenticatingWithGoogle(false);
+      setIsGoogleModalOpen(false);
+      onLogin(userObj);
+    } catch (popupError: any) {
+      console.warn('Firebase popup sign-in note:', popupError);
+      setIsAuthenticatingWithGoogle(false);
+      // If popup is blocked in iframe, open the guided modal
+      setIsGoogleModalOpen(true);
+      if (popupError?.code === 'auth/popup-blocked') {
+        setError('Popup was blocked by your browser. You can select your account in the dialog below.');
+      }
+    }
+  };
+
+  // Google Auth Handler for selected or confirmed account
+  const handlePerformGoogleLogin = async (account: {
     email: string;
     fullName: string;
     role: UserRole;
+    uid?: string;
   }) => {
     setIsAuthenticatingWithGoogle(true);
-
-    setTimeout(() => {
-      setIsAuthenticatingWithGoogle(false);
-      setIsGoogleModalOpen(false);
-
+    try {
       const usernameSlug = account.email.split('@')[0];
-      onLogin({
+      const userObj: User = {
         id: Date.now(),
+        uid: account.uid || `google-${account.email.replace(/[^a-zA-Z0-9]/g, '_')}`,
         username: usernameSlug,
         fullName: account.fullName,
         email: account.email,
@@ -97,8 +150,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(
           account.fullName
         )}&background=6C5CE7&color=fff&bold=true`,
-      });
-    }, 600);
+      };
+
+      await saveUserProfile(userObj).catch((e) => console.warn('User profile sync to Firestore:', e));
+      setIsAuthenticatingWithGoogle(false);
+      setIsGoogleModalOpen(false);
+      onLogin(userObj);
+    } catch (err) {
+      setIsAuthenticatingWithGoogle(false);
+      setError('Failed to authenticate Google user. Please retry.');
+    }
   };
 
   const handleCustomGoogleSubmit = (e: React.FormEvent) => {
@@ -155,50 +216,49 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         <div className="space-y-3">
           <button
             type="button"
-            onClick={() => {
-              setError('');
-              setIsGoogleModalOpen(true);
-            }}
-            className="w-full py-3 px-4 bg-white hover:bg-slate-50 border border-slate-300 hover:border-slate-400 rounded-xl shadow-sm hover:shadow transition transform active:scale-[0.99] flex items-center justify-center gap-3 cursor-pointer group"
+            onClick={handleDirectGoogleSignIn}
+            disabled={isAuthenticatingWithGoogle}
+            className="w-full py-3 px-4 bg-white hover:bg-slate-50 border border-slate-300 hover:border-slate-400 rounded-xl shadow-sm hover:shadow transition transform active:scale-[0.99] flex items-center justify-center gap-3 cursor-pointer group disabled:opacity-75"
           >
             {/* Authentic Google 4-Color Icon */}
-            <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
+            {isAuthenticatingWithGoogle ? (
+              <i className="fa-solid fa-circle-notch fa-spin text-sm text-[#4285F4]"></i>
+            ) : (
+              <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+            )}
             <span className="font-semibold text-slate-700 text-xs sm:text-sm group-hover:text-slate-900">
-              Sign in with Google
+              {isAuthenticatingWithGoogle ? 'Connecting with Google...' : 'Sign in with Google'}
             </span>
           </button>
 
           {/* Quick Direct Google Login with Chitra's account */}
           <button
             type="button"
-            onClick={() =>
-              handlePerformGoogleLogin({
-                email: 'chitraangulakshmi@gmail.com',
-                fullName: 'Chitra Angulakshmi',
-                role: 'ADMIN',
-              })
-            }
+            onClick={() => {
+              setError('');
+              setIsGoogleModalOpen(true);
+            }}
             className="w-full py-1.5 px-3 rounded-lg bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-100 text-[#6C5CE7] text-[11px] font-medium flex items-center justify-center gap-1.5 transition cursor-pointer"
           >
             <i className="fa-brands fa-google text-[10px]"></i>
-            <span>Quick Sign-In as <strong>chitraangulakshmi@gmail.com</strong> (GM)</span>
+            <span>Choose Google Account or Quick Sign-In (chitraangulakshmi@gmail.com)</span>
           </button>
         </div>
 

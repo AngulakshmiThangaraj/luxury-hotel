@@ -1,13 +1,14 @@
 export type UserRole = 'ADMIN' | 'RECEPTIONIST';
 
 export interface User {
-  id: number;
+  id: number | string;
+  uid?: string;
   username: string;
   fullName: string;
   role: UserRole;
   email?: string;
   avatarUrl?: string;
-  authProvider?: 'local' | 'google';
+  authProvider?: 'local' | 'google' | 'firebase';
 }
 
 export type RoomType = 'SINGLE' | 'DOUBLE' | 'DELUXE' | 'SUITE';
